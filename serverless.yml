@@ -1,0 +1,155 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: sls-proclub-crawler
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+# frameworkVersion: "=X.X.X"
+
+package:
+  exclude:
+    # - node_modules/**
+    - .DS_Store
+    - .gitignore
+    - .npmignore
+    - .git/**
+    - .idea/**
+    - handler_backup.js
+    - package.json
+    - package-lock.json
+    - README.MD
+  include:
+    - node_modules/axios/
+    - node_modules/debug/
+    - node_modules/follow-redirects/
+    - node_modules/is-buffer/
+    - node_modules/ms/
+
+plugins:
+  - serverless-step-functions
+  - serverless-pseudo-parameters
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  memorySize: 512
+  timeout: 300
+  stage: dev
+  region: ap-northeast-1
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - dynamodb:*
+      Resource:
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/Matches_${self:provider.environment.ENV_ID}"
+
+  environment:
+    ENV_ID: "001"
+    API_PLATFORM: PS4
+    CLUB_ID: 3634186
+
+functions:
+  crawl-matches:
+    handler: handler.crawlMatches
+    events:
+      - http:
+          path: crawl
+          method: post
+  save-member-histroy:
+    handler: handler.saveMemberHistory
+    events:
+      - http:
+          path: save
+          method: post
+
+          
+stepFunctions:
+  stateMachines:
+    crawlProClubMatches:
+      events:
+        - http:
+            path: crawl
+            method: post
+        - schedule:
+            rate: rate(15 minutes)
+            enabled: true
+            input:
+              clubId: ${self:provider.environment.CLUB_ID}
+              platform: ${self:provider.environment.API_PLATFORM}
+              stageParams:
+                stage: dev
+      definition:
+        Comment: "ProClub Crawler"
+        StartAt: CrawlMatches
+        States:
+          CrawlMatches:
+            Type: Task
+            Resource: arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl
+            End: true
+
+resources:
+  Resources:
+    MatchTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: matchUid
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: N
+        KeySchema:
+          - AttributeName: matchUid
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: Match_${self:provider.environment.ENV_ID}
+
+    MemberHistoryTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: blazeId
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: N
+        KeySchema:
+          - AttributeName: blazeId
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: MemberHistory_${self:provider.environment.ENV_ID}
+
+    MemberTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: blazeId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: blazeId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: Member_${self:provider.environment.ENV_ID}

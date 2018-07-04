@@ -1,0 +1,19 @@
+{
+  "name": "sls-proclub-crawler",
+  "version": "1.0.0",
+  "description": "",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "serverless-offline": "^3.25.4",
+    "serverless-pseudo-parameters": "^1.6.0",
+    "serverless-step-functions": "^1.4.1"
+  },
+  "dependencies": {
+    "axios": "^0.18.0"
+  }
+}
