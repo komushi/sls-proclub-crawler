@@ -19,7 +19,9 @@ https://www.easports.com/iframe/fifa17proclubs/api/platforms/PS4/settings
 ```
 curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/crawl --data '{"clubId": "3634186"}'
 
-curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/save --data @'data.json'
+curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/save-history --data @'data.json'
+
+curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/save-stats --data @'data2.json'
 ```
 
 ```

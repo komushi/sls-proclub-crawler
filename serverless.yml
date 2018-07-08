@@ -58,7 +58,7 @@ provider:
   environment:
     ENV_ID: "001"
     API_PLATFORM: PS4
-    CLUB_ID: 3634186
+    CLUB_ID: "3634186"
 
 functions:
   crawl-matches:
@@ -71,7 +71,13 @@ functions:
     handler: handler.saveMemberHistory
     events:
       - http:
-          path: save
+          path: save-history
+          method: post
+  save-member-stats:
+    handler: handler.saveMemberStats
+    events:
+      - http:
+          path: save-stats
           method: post
 
           
@@ -103,15 +109,15 @@ resources:
   Resources:
     MatchTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
-          - AttributeName: matchUid
+          - AttributeName: clubId
             AttributeType: S
           - AttributeName: timestamp
             AttributeType: N
         KeySchema:
-          - AttributeName: matchUid
+          - AttributeName: clubId
             KeyType: HASH
           - AttributeName: timestamp
             KeyType: RANGE
@@ -122,15 +128,15 @@ resources:
 
     MemberHistoryTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
-          - AttributeName: blazeId
+          - AttributeName: playername
             AttributeType: S
           - AttributeName: timestamp
             AttributeType: N
         KeySchema:
-          - AttributeName: blazeId
+          - AttributeName: playername
             KeyType: HASH
           - AttributeName: timestamp
             KeyType: RANGE
@@ -141,13 +147,13 @@ resources:
 
     MemberTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
-          - AttributeName: blazeId
+          - AttributeName: playername
             AttributeType: S
         KeySchema:
-          - AttributeName: blazeId
+          - AttributeName: playername
             KeyType: HASH
         ProvisionedThroughput:
           ReadCapacityUnits: 1
