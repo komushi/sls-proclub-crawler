@@ -13,7 +13,8 @@ Date.prototype.yyyymm = function() {
   const mm = this.getMonth() + 1; // getMonth() is zero-based
 
   return [this.getFullYear(),
-          (mm>9 ? '' : '0') + '-' + mm
+          '-',
+          (mm>9 ? '' : '0') + mm
          ].join('');
 };
 
@@ -113,17 +114,23 @@ module.exports.saveHistory = async (event, context, callback) => {
     console.log("***monthList***", JSON.stringify(monthList));
 
     let memberStats = await getClubMemberStats(clubId);
-    // console.log('memberStats', memberStats);
+    console.log('memberStats', memberStats);
 
-    let memberPlayedGames = await getMemberPlayedGames(Object.keys(memberStats), 1000000000000, 2000000000000);
+    // let monthList = [{"month":"2018-07","begin":1530370800000,"end":1533049200000}];
+    // let memberStats = {"YakirH2017": "YakirH2017", "mao_nyan_k": ""};
+
+    // let monthList = [{"month":"2018-07","begin":1530370800000,"end":1533049200000},{"month":"2018-06","begin":1527778800000,"end":1530370800000}];
+    // let memberStats = {"YakirH2017": "YakirH2017"};
+
+    let memberPlayedGames = await getMemberPlayedGames(Object.keys(memberStats), monthList);
     console.log("***memberPlayedGames***", JSON.stringify(memberPlayedGames));
-
+/*
     let params = Object.keys(memberStats).map((key, index) => {
       let record = memberStats[key];
       record['Attendance'] = {'Overall': (memberPlayedGames[key] || 0) / 5 * 100};
       return record;
     });
-
+*/
     // console.log("***params***", JSON.stringify(params));
 
     // generateBatchWriteStatsParams(apiResult2)
@@ -171,32 +178,45 @@ const generateBatchWriteStatsParams = function(apiResult, blazeIdList) {
   return { params, blazeIdList: Object.keys(blazeIdList) };
 };
 
-const getMemberPlayedGames = async (playerNameList, begin, end) => {
-  let paramsList = playerNameList.map(playerName => {
-    return {
-      TableName: helper.MEMBER_HISTORY_TABLE,
-      KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
-      ExpressionAttributeValues: {
-        ':hkey': playerName,
-        ':rkey_begin': begin,
-        ':rkey_end': end
-      },
-      ExpressionAttributeNames: {
-        '#hkey': 'playername',
-        '#rkey': 'timestamp'
-      },
-      ProjectionExpression: "playername"
-    };
+const getMemberPlayedGames = async (playerNameList, monthList) => {
+  let paramsList = [];
+
+  playerNameList.map(playerName => {
+    let params = monthList.map(currentMonth => {
+      return {
+        TableName: helper.MEMBER_HISTORY_TABLE,
+        KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
+        ExpressionAttributeValues: {
+          ':hkey': playerName,
+          ':rkey_begin': currentMonth.begin,
+          ':rkey_end': currentMonth.end,
+        },
+        ExpressionAttributeNames: {
+          '#hkey': 'playername',
+          '#rkey': 'timestamp',
+        },
+        ProjectionExpression: 'playername'
+      };      
+    });
+    paramsList = paramsList.concat(params);
+
   });
 
   let promiseList = paramsList.map(params => {
     return new Promise((resolve, reject) => {
+
       docClient.query(params, async (err, data) => {
         if (err) {
           console.log(err);
           reject(err);
         } else {
-          let resolved = `{ "playername": "${params.ExpressionAttributeValues[':hkey']}", "Count":  ${data.Count}}`;
+          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
+
+          let resolved = `{
+            "playername": "${params.ExpressionAttributeValues[':hkey']}",
+            "yyyymm": "${matchDate.yyyymm()}",
+            "Count":  ${data.Count}
+          }`;
 
           resolve(JSON.parse(resolved));
         }
@@ -204,14 +224,17 @@ const getMemberPlayedGames = async (playerNameList, begin, end) => {
     });
   });
 
-  let queryResult = await Promise.all(promiseList);
-  let result = {};
+  return await Promise.all(promiseList);
 
-  queryResult.map(record => {
-    result[record.playername] = record.Count;
-  });
+  // let queryResult = await Promise.all(promiseList);
   
-  return await result;
+  // let result = {};
+
+  // queryResult.map(record => {
+  //   result[record.playername] = record.Count;
+  // });
+  
+  // return await result;
 };
 
 const getClubPlayedGames = function(clubId, begin, end) {
