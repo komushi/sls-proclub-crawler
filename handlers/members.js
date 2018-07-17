@@ -107,23 +107,20 @@ module.exports.saveHistory = async (event, context, callback) => {
 
     clubId = payload.clubId || helper.CLUB_ID;
 
-    let paramsList = generateBatchWriteParams(payload.memberHistoryList);
-    await Promise.all(batchWrite(paramsList));
+    // let paramsList = generateBatchWriteParams(payload.memberHistoryList);
+    // await Promise.all(batchWrite(paramsList));
 
     let monthList = generateMonthParams(payload.monthList);
     console.log("***monthList***", JSON.stringify(monthList));
 
     let memberStats = await getClubMemberStats(clubId);
-    console.log('memberStats', memberStats);
+    // console.log('memberStats', memberStats);
 
-    // let monthList = [{"month":"2018-07","begin":1530370800000,"end":1533049200000}];
-    // let memberStats = {"YakirH2017": "YakirH2017", "mao_nyan_k": ""};
-
-    // let monthList = [{"month":"2018-07","begin":1530370800000,"end":1533049200000},{"month":"2018-06","begin":1527778800000,"end":1530370800000}];
-    // let memberStats = {"YakirH2017": "YakirH2017"};
+    let clubPlayedGames = await getClubPlayedGames(clubId, monthList);
+    console.log('***clubPlayedGames***', clubPlayedGames);
 
     let memberPlayedGames = await getMemberPlayedGames(Object.keys(memberStats), monthList);
-    console.log("***memberPlayedGames***", JSON.stringify(memberPlayedGames));
+    console.log('***memberPlayedGames***', JSON.stringify(memberPlayedGames));
 /*
     let params = Object.keys(memberStats).map((key, index) => {
       let record = memberStats[key];
@@ -237,34 +234,76 @@ const getMemberPlayedGames = async (playerNameList, monthList) => {
   // return await result;
 };
 
-const getClubPlayedGames = function(clubId, begin, end) {
+const getClubPlayedGames = async (clubId, monthList) => {
+  let paramsList = monthList.map(currentMonth => {
+    return {
+      TableName: helper.MATCH_TABLE,
+      KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
+      ExpressionAttributeValues: {
+        ':hkey': clubId,
+        ':rkey_begin': currentMonth.begin,
+        ':rkey_end': currentMonth.end
+      },
+      ExpressionAttributeNames: {
+        '#hkey': 'clubId',
+        '#rkey': 'timestamp'
+      },
+      ProjectionExpression: "clubId"
+    };
+  });
 
-  let params = {
-    TableName: helper.MATCH_TABLE,
-    KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
-    ExpressionAttributeValues: {
-      ':hkey': clubId,
-      ':rkey_begin': begin,
-      ':rkey_end': end
-    },
-    ExpressionAttributeNames: {
-      '#hkey': 'clubId',
-      '#rkey': 'timestamp'
-    },
-    ProjectionExpression: "clubId"
-  };
+  let promiseList = paramsList.map(params => {
+    return new Promise((resolve, reject) => {
 
-  return new Promise((resolve, reject) => {
-    docClient.query(params, async (err, data) => {
-      if (err) {
-        console.log(err);
-        reject(err);
-      } else {
-        resolve(data);
-      }
+      docClient.query(params, async (err, data) => {
+        if (err) {
+          console.log(err);
+          reject(err);
+        } else {
+          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
+
+          let resolved = `{
+            "clubId": "${params.ExpressionAttributeValues[':hkey']}",
+            "yyyymm": "${matchDate.yyyymm()}",
+            "Count":  ${data.Count}
+          }`;
+
+          resolve(JSON.parse(resolved));
+        }
+      });
     });
   });
+
+  return await Promise.all(promiseList);
 };
+
+// const getClubPlayedGames = function(clubId, begin, end) {
+//   let params = {
+//     TableName: helper.MATCH_TABLE,
+//     KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
+//     ExpressionAttributeValues: {
+//       ':hkey': clubId,
+//       ':rkey_begin': begin,
+//       ':rkey_end': end
+//     },
+//     ExpressionAttributeNames: {
+//       '#hkey': 'clubId',
+//       '#rkey': 'timestamp'
+//     },
+//     ProjectionExpression: "clubId"
+//   };
+
+//   return new Promise((resolve, reject) => {
+//     docClient.query(params, async (err, data) => {
+//       if (err) {
+//         console.log(err);
+//         reject(err);
+//       } else {
+//         resolve(data);
+//       }
+//     });
+//   });
+// };
 
 const generateMonthParams = function(monthList) {
   return monthList.map(yyyymm => {
