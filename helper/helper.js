@@ -8,6 +8,7 @@ const ENV_ID = process.env.ENV_ID;
 const CLUB_ID = process.env.CLUB_ID;
 const API_PLATFORM = process.env.API_PLATFORM;
 const MATCH_TABLE = `Match_${ENV_ID}`;
+const MEMBER_TABLE = `Member_${ENV_ID}`;
 const MEMBER_HISTORY_TABLE = `MemberHistory_${ENV_ID}`;
 
 module.exports = {
@@ -16,5 +17,6 @@ module.exports = {
 	CLUB_ID, 
 	API_PLATFORM, 
 	MATCH_TABLE,
+	MEMBER_TABLE,
 	MEMBER_HISTORY_TABLE
 };

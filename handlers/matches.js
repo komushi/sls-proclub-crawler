@@ -49,6 +49,7 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
   let memberHistoryList = [];
   let monthList = {};
   let keys = Object.keys(apiResult);
+  let playerList = {};
 
   keys.map((matchId, index) => {
 
@@ -65,11 +66,13 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
 
         playerStatsObj['timestamp'] = timestamp;
         memberHistoryList.push(playerStatsObj);
+
+        playerList[playerStatsObj['playername']] = '';
       });
 
       // generate monthList
       let matchDate = new Date(timestamp);
-      monthList[matchDate.yyyymm()] = "";
+      monthList[matchDate.yyyymm()] = '';
 
       // generate paramsList
       let opponentName;
@@ -120,7 +123,7 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
 
   console.log('paramsList', JSON.stringify(paramsList));
 
-  return { paramsList, memberHistoryList, monthList: Object.keys(monthList) } ;
+  return { paramsList, playerList: Object.keys(playerList), memberHistoryList, monthList: Object.keys(monthList) } ;
 }
 
 const batchWrite = function(paramsList) {
@@ -179,6 +182,7 @@ module.exports.crawl = async (event, context, callback) => {
 
   let matchIdToSaveList;
   let monthList;
+  let playerList;
   let error;
   let memberHistoryList = [];
 
@@ -207,6 +211,7 @@ module.exports.crawl = async (event, context, callback) => {
 
       memberHistoryList = batchWriteParams.memberHistoryList;
       monthList = batchWriteParams.monthList;
+      playerList = batchWriteParams.playerList;
 
       await Promise.all(batchWrite(batchWriteParams.paramsList));
     }
@@ -216,5 +221,5 @@ module.exports.crawl = async (event, context, callback) => {
     // console.log("***err***", err);
   }
 
-  done(error, {type: 'memberHistoryList', memberHistoryList, newMatches: matchIdToSaveList.length, clubId, monthList: monthList}, callback);
+  done(error, {type: 'memberHistoryList', playerList, memberHistoryList, newMatches: matchIdToSaveList.length, clubId, monthList: monthList}, callback);
 };

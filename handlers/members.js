@@ -97,6 +97,7 @@ const batchWrite = function(paramsList) {
   });
 }
 
+
 module.exports.saveHistory = async (event, context, callback) => {
 
   let error;
@@ -110,30 +111,23 @@ module.exports.saveHistory = async (event, context, callback) => {
     // let paramsList = generateBatchWriteParams(payload.memberHistoryList);
     // await Promise.all(batchWrite(paramsList));
 
-    let monthList = generateMonthParams(payload.monthList);
-    console.log("***monthList***", JSON.stringify(monthList));
+    // let monthList = generateMonthParams(payload.monthList);
+    // console.log("***monthList***", JSON.stringify(monthList));
 
-    let memberStats = await getClubMemberStats(clubId);
+    // let clubPlayedGames = await calcClubPlayedGames(clubId, monthList);
+    // console.log('***clubPlayedGames***', clubPlayedGames);
+
+    // let memberPlayedGames = await calcMemberStats(payload.playerList, monthList);
+    // console.log('***memberPlayedGames***', JSON.stringify(memberPlayedGames));
+
+    // let memberStats = await getMemberStats(clubId);
     // console.log('memberStats', memberStats);
 
-    let clubPlayedGames = await getClubPlayedGames(clubId, monthList);
-    console.log('***clubPlayedGames***', clubPlayedGames);
+    let params = generateBatchGetParams(payload.playerList);
+    console.log('params', JSON.stringify(params));
 
-    let memberPlayedGames = await getMemberPlayedGames(Object.keys(memberStats), monthList);
-    console.log('***memberPlayedGames***', JSON.stringify(memberPlayedGames));
-/*
-    let params = Object.keys(memberStats).map((key, index) => {
-      let record = memberStats[key];
-      record['Attendance'] = {'Overall': (memberPlayedGames[key] || 0) / 5 * 100};
-      return record;
-    });
-*/
-    // console.log("***params***", JSON.stringify(params));
-
-    // generateBatchWriteStatsParams(apiResult2)
-
-    
-    // console.log("***apiResult2***", JSON.stringify(apiResult2));
+    let result = await batchGet(params);
+    console.log('result', JSON.stringify(result));
 
   } catch (err) {
     error = err.stack;
@@ -143,7 +137,7 @@ module.exports.saveHistory = async (event, context, callback) => {
   done(error, { clubId }, callback);
 };
 
-const getClubMemberStats = async (clubId) => {
+const getMemberStats = async (clubId) => {
   let apiResult = await helper.proclubApi.club.getClubMemberStats(clubId);
 
   let result = {};
@@ -175,10 +169,10 @@ const generateBatchWriteStatsParams = function(apiResult, blazeIdList) {
   return { params, blazeIdList: Object.keys(blazeIdList) };
 };
 
-const getMemberPlayedGames = async (playerNameList, monthList) => {
+const calcMemberStats = async (playerList, monthList) => {
   let paramsList = [];
 
-  playerNameList.map(playerName => {
+  playerList.map(playerName => {
     let params = monthList.map(currentMonth => {
       return {
         TableName: helper.MEMBER_HISTORY_TABLE,
@@ -186,13 +180,13 @@ const getMemberPlayedGames = async (playerNameList, monthList) => {
         ExpressionAttributeValues: {
           ':hkey': playerName,
           ':rkey_begin': currentMonth.begin,
-          ':rkey_end': currentMonth.end,
+          ':rkey_end': currentMonth.end
         },
         ExpressionAttributeNames: {
           '#hkey': 'playername',
-          '#rkey': 'timestamp',
+          '#rkey': 'timestamp'
         },
-        ProjectionExpression: 'playername'
+        ProjectionExpression: 'assists, goals, passattempts, passesmade, shots'
       };      
     });
     paramsList = paramsList.concat(params);
@@ -207,12 +201,40 @@ const getMemberPlayedGames = async (playerNameList, monthList) => {
           console.log(err);
           reject(err);
         } else {
+          let aggregated;
+
+          if (data.Count == 0) {
+            aggregated = {
+              assists: 0,
+              goals: 0,
+              passattempts: 0,
+              passesmade: 0,
+              shots: 0,
+            }
+          } else {
+            aggregated = data.Items.reduce((accumulator, currentValue) => {
+              accumulator.assists = parseInt(accumulator.assists) + parseInt(currentValue.assists);
+              accumulator.goals = parseInt(accumulator.goals) +  parseInt(currentValue.goals);
+              accumulator.passattempts = parseInt(accumulator.passattempts) + parseInt(currentValue.passattempts);
+              accumulator.passesmade = parseInt(accumulator.passesmade) + parseInt(currentValue.passesmade);
+              accumulator.shots = parseInt(accumulator.shots) + parseInt(currentValue.shots);
+              return accumulator;
+            });            
+          }
+
+          // console.log('***aggregated***', aggregated);
+
           let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
 
           let resolved = `{
             "playername": "${params.ExpressionAttributeValues[':hkey']}",
             "yyyymm": "${matchDate.yyyymm()}",
-            "Count":  ${data.Count}
+            "gamesplayed":  ${data.Count},
+            "shots": ${aggregated.shots},
+            "goals": ${aggregated.goals},
+            "assists": ${aggregated.assists},
+            "passattempts": ${aggregated.passattempts},
+            "passesmade": ${aggregated.passesmade}
           }`;
 
           resolve(JSON.parse(resolved));
@@ -234,7 +256,7 @@ const getMemberPlayedGames = async (playerNameList, monthList) => {
   // return await result;
 };
 
-const getClubPlayedGames = async (clubId, monthList) => {
+const calcClubPlayedGames = async (clubId, monthList) => {
   let paramsList = monthList.map(currentMonth => {
     return {
       TableName: helper.MATCH_TABLE,
@@ -265,7 +287,7 @@ const getClubPlayedGames = async (clubId, monthList) => {
           let resolved = `{
             "clubId": "${params.ExpressionAttributeValues[':hkey']}",
             "yyyymm": "${matchDate.yyyymm()}",
-            "Count":  ${data.Count}
+            "gamesplayed":  ${data.Count}
           }`;
 
           resolve(JSON.parse(resolved));
@@ -277,33 +299,6 @@ const getClubPlayedGames = async (clubId, monthList) => {
   return await Promise.all(promiseList);
 };
 
-// const getClubPlayedGames = function(clubId, begin, end) {
-//   let params = {
-//     TableName: helper.MATCH_TABLE,
-//     KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
-//     ExpressionAttributeValues: {
-//       ':hkey': clubId,
-//       ':rkey_begin': begin,
-//       ':rkey_end': end
-//     },
-//     ExpressionAttributeNames: {
-//       '#hkey': 'clubId',
-//       '#rkey': 'timestamp'
-//     },
-//     ProjectionExpression: "clubId"
-//   };
-
-//   return new Promise((resolve, reject) => {
-//     docClient.query(params, async (err, data) => {
-//       if (err) {
-//         console.log(err);
-//         reject(err);
-//       } else {
-//         resolve(data);
-//       }
-//     });
-//   });
-// };
 
 const generateMonthParams = function(monthList) {
   return monthList.map(yyyymm => {
@@ -317,6 +312,35 @@ const generateMonthParams = function(monthList) {
     };
   });
 };
+
+const generateBatchGetParams = function(playerList) {
+
+  // generate query params
+  let keyList = playerList.map((playername) => {
+    return {
+      playername: playername
+    };
+  });
+
+  let params = JSON.parse(`{"RequestItems": {"${helper.MEMBER_TABLE}":{"Keys": []}}}`);
+  params['RequestItems'][`${helper.MEMBER_TABLE}`]['Keys'] = keyList;
+
+  return params;
+}
+
+const batchGet = async (params) => {
+  return await new Promise((resolve, reject) => {
+    docClient.batchGet(params, async (err, data) => {
+      if (err) {
+        console.log(err);
+        reject(err);
+      } else {
+        // console.log(JSON.stringify(data));
+        resolve(data);
+      }
+    });
+  });
+}
 
 module.exports.saveStats = async (event, context, callback) => {
 
@@ -333,7 +357,7 @@ module.exports.saveStats = async (event, context, callback) => {
 
     // let apiResult = await helper.proclubApi.club.getClubMemberStats(clubId);
 
-    result = await getMemberPlayedGames(payload.playerNameList, 1000628044000, 1550628044000);
+    // result = await getMemberPlayedGames(payload.playerNameList, 1000628044000, 1550628044000);
     // console.log("***result***", JSON.stringify(result));
 
     // result = await getClubPlayedGames(clubId, 1000628044000, 1550628044000);
