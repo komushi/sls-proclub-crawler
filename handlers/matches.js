@@ -221,5 +221,5 @@ module.exports.crawl = async (event, context, callback) => {
     // console.log("***err***", err);
   }
 
-  done(error, {type: 'memberHistoryList', playerList, memberHistoryList, newMatches: matchIdToSaveList.length, clubId, monthList: monthList}, callback);
+  done(error, {type: 'memberHistoryList', playerList, memberHistoryList, clubId, monthList: monthList}, callback);
 };

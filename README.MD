@@ -21,7 +21,6 @@ curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/craw
 
 curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/save-history --data @'data.json'
 
-curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/save-stats --data @'data2.json'
 ```
 
 ```

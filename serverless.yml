@@ -107,6 +107,21 @@ stepFunctions:
 
 resources:
   Resources:
+    MemberTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Delete
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: clubId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: clubId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: Club_${self:provider.environment.ENV_ID}
+
     MatchTable:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Delete
@@ -122,8 +137,8 @@ resources:
           - AttributeName: timestamp
             KeyType: RANGE
         ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
         TableName: Match_${self:provider.environment.ENV_ID}
 
     MemberHistoryTable:
@@ -141,8 +156,8 @@ resources:
           - AttributeName: timestamp
             KeyType: RANGE
         ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
         TableName: MemberHistory_${self:provider.environment.ENV_ID}
 
     MemberTable:

@@ -56,7 +56,7 @@ const parseEvent = function(event) {
   return payload; // Could be undefined!
 }
 
-const generateBatchWriteParams = function(memberHistoryList) {
+const generateParamsBatchWriteMemberHistory = function(memberHistoryList) {
   let paramsList = [];
   let itemList = [];
 
@@ -82,7 +82,7 @@ const generateBatchWriteParams = function(memberHistoryList) {
   return paramsList;
 }
 
-const batchWrite = function(paramsList) {
+const batchWriteMemberHistory = function(paramsList) {
   return paramsList.map(params => {
     return new Promise((resolve, reject) => {
       docClient.batchWrite(params, async (err, data) => {
@@ -108,48 +108,160 @@ module.exports.saveHistory = async (event, context, callback) => {
 
     clubId = payload.clubId || helper.CLUB_ID;
 
-    // let paramsList = generateBatchWriteParams(payload.memberHistoryList);
-    // await Promise.all(batchWrite(paramsList));
-
-    // let monthList = generateMonthParams(payload.monthList);
+    let monthList = generateMonthParams(payload.monthList);
     // console.log("***monthList***", JSON.stringify(monthList));
 
-    // let clubPlayedGames = await calcClubPlayedGames(clubId, monthList);
-    // console.log('***clubPlayedGames***', clubPlayedGames);
+    let clubPlayedGames = await calcClubPlayedGames(clubId, monthList);
+    console.log('***clubPlayedGames***', JSON.stringify(clubPlayedGames));
 
-    // let memberPlayedGames = await calcMemberStats(payload.playerList, monthList);
-    // console.log('***memberPlayedGames***', JSON.stringify(memberPlayedGames));
+    let clubStats = await getClubStats(clubId);
+    console.log('***clubStats***', JSON.stringify(clubStats));
 
-    // let memberStats = await getMemberStats(clubId);
-    // console.log('memberStats', memberStats);
+    let putClubResult = await putClub(clubId, clubStats, clubPlayedGames);
+    // console.log('putClubResult', JSON.stringify(putClubResult));
 
-    let params = generateBatchGetParams(payload.playerList);
+    let paramsList = generateParamsBatchWriteMemberHistory(payload.memberHistoryList);
+    // console.log('paramsList', JSON.stringify(paramsList));
+
+    let writeMemberHistoryResult = await Promise.all(batchWriteMemberHistory(paramsList));
+    // console.log('writeMemberHistoryResult', JSON.stringify(writeMemberHistoryResult));    
+
+    let memberPlayedGames = await calcMemberStats(payload.playerList, monthList);
+    console.log('***memberPlayedGames***', JSON.stringify(memberPlayedGames));
+
+    let params = generateParamsBatchGetMember(payload.playerList);
     console.log('params', JSON.stringify(params));
 
-    let result = await batchGet(params);
-    console.log('result', JSON.stringify(result));
+    let memberList = await batchGetMember(params);
+    console.log('memberList', JSON.stringify(memberList));
+
+    let paramsList = generateParamsBatchWriteMember(memberList);
 
   } catch (err) {
     error = err.stack;
-    // console.log("***err***", err);
   }
 
   done(error, { clubId }, callback);
 };
 
-const getMemberStats = async (clubId) => {
-  let apiResult = await helper.proclubApi.club.getClubMemberStats(clubId);
+const putClub = async (clubId, clubStats, clubPlayedGames) => {
 
-  let result = {};
+  let item = {gamesPlayed: {}, clubId: clubId};
+
+  if (clubStats.Count > 0) {
+    item = clubStats.Items[0];
+  }
+
+  Object.keys(clubPlayedGames.gamesPlayed).map((key, index) => {
+    if (item.gamesPlayed[key]) {
+      item.gamesPlayed[key] += clubPlayedGames.gamesPlayed[key];
+    } else {
+      item.gamesPlayed[key] = clubPlayedGames.gamesPlayed[key];
+    }
+  });  
+
+  let params = {
+    TableName: helper.CLUB_TABLE,
+    Item: {}
+  };
+
+  params.Item = item;
+  console.log("item", JSON.stringify(item))
   
-  Object.values(apiResult).map((record, index) => {
-    result[record.name] = record;
+  return await new Promise((resolve, reject) => {
+    docClient.put(params, async (err, data) => {
+      if (err) {
+        console.log(err);
+        reject(err);
+      } else {
+        resolve(data);
+      }
+    });
+  });
+}
+
+const getClubStats = async (clubId) => {
+
+  let params = {
+    TableName: helper.CLUB_TABLE,
+    KeyConditionExpression: '#hkey = :hkey',
+    ExpressionAttributeValues: {
+      ':hkey': clubId
+    },
+    ExpressionAttributeNames: {
+      '#hkey': 'clubId'
+    },
+    // ProjectionExpression: 'clubId, gamesPlayed'
+  };   
+
+  return await new Promise((resolve, reject) => {
+    docClient.query(params, async (err, data) => {
+      if (err) {
+        console.log(err);
+        reject(err);
+      } else {
+        resolve(data);
+      }
+    });
+  });
+
+};
+
+const calcClubPlayedGames = async (clubId, monthList) => {
+  let paramsList = monthList.map(currentMonth => {
+    return {
+      TableName: helper.MATCH_TABLE,
+      KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
+      ExpressionAttributeValues: {
+        ':hkey': clubId,
+        ':rkey_begin': currentMonth.begin,
+        ':rkey_end': currentMonth.end
+      },
+      ExpressionAttributeNames: {
+        '#hkey': 'clubId',
+        '#rkey': 'timestamp'
+      },
+      ProjectionExpression: "clubId"
+    };
+  });
+
+  let promiseList = paramsList.map(params => {
+    return new Promise((resolve, reject) => {
+
+      docClient.query(params, async (err, data) => {
+        if (err) {
+          console.log(err);
+          reject(err);
+        } else {
+          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
+
+          let resolved = `{
+            "clubId": "${params.ExpressionAttributeValues[':hkey']}",
+            "yyyymm": "${matchDate.yyyymm()}",
+            "gamesPlayed":  ${data.Count}
+          }`;
+
+          resolve(JSON.parse(resolved));
+        }
+      });
+    });
+  });
+
+  let clubPlayedGamesList = await Promise.all(promiseList);
+
+  let result = {gamesPlayed: {}};
+
+  clubPlayedGamesList.map(currentValue => {
+    result.gamesPlayed[currentValue.yyyymm] = currentValue.gamesPlayed;
+    result.gamesPlayed['overall'] = (result.gamesPlayed['overall'] || 0) + currentValue.gamesPlayed;
   });
 
   return await result;
-}
+};
 
-const generateBatchWriteStatsParams = function(apiResult, blazeIdList) {
+
+
+const generateParamsBatchWriteHistory = function(apiResult, blazeIdList) {
 
   let itemList = blazeIdList.map(blazeId => {
     let record = apiResult[blazeId];
@@ -244,61 +356,7 @@ const calcMemberStats = async (playerList, monthList) => {
   });
 
   return await Promise.all(promiseList);
-
-  // let queryResult = await Promise.all(promiseList);
-  
-  // let result = {};
-
-  // queryResult.map(record => {
-  //   result[record.playername] = record.Count;
-  // });
-  
-  // return await result;
 };
-
-const calcClubPlayedGames = async (clubId, monthList) => {
-  let paramsList = monthList.map(currentMonth => {
-    return {
-      TableName: helper.MATCH_TABLE,
-      KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
-      ExpressionAttributeValues: {
-        ':hkey': clubId,
-        ':rkey_begin': currentMonth.begin,
-        ':rkey_end': currentMonth.end
-      },
-      ExpressionAttributeNames: {
-        '#hkey': 'clubId',
-        '#rkey': 'timestamp'
-      },
-      ProjectionExpression: "clubId"
-    };
-  });
-
-  let promiseList = paramsList.map(params => {
-    return new Promise((resolve, reject) => {
-
-      docClient.query(params, async (err, data) => {
-        if (err) {
-          console.log(err);
-          reject(err);
-        } else {
-          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
-
-          let resolved = `{
-            "clubId": "${params.ExpressionAttributeValues[':hkey']}",
-            "yyyymm": "${matchDate.yyyymm()}",
-            "gamesplayed":  ${data.Count}
-          }`;
-
-          resolve(JSON.parse(resolved));
-        }
-      });
-    });
-  });
-
-  return await Promise.all(promiseList);
-};
-
 
 const generateMonthParams = function(monthList) {
   return monthList.map(yyyymm => {
@@ -313,7 +371,7 @@ const generateMonthParams = function(monthList) {
   });
 };
 
-const generateBatchGetParams = function(playerList) {
+const generateParamsBatchGetMember = function(playerList) {
 
   // generate query params
   let keyList = playerList.map((playername) => {
@@ -328,7 +386,7 @@ const generateBatchGetParams = function(playerList) {
   return params;
 }
 
-const batchGet = async (params) => {
+const batchGetMember = async (params) => {
   return await new Promise((resolve, reject) => {
     docClient.batchGet(params, async (err, data) => {
       if (err) {
@@ -336,43 +394,10 @@ const batchGet = async (params) => {
         reject(err);
       } else {
         // console.log(JSON.stringify(data));
-        resolve(data);
+        resolve(data.Responses[`${helper.MEMBER_TABLE}`]);
       }
     });
   });
 }
 
-module.exports.saveStats = async (event, context, callback) => {
 
-  let error;
-  let result;
-
-  try {
-
-    const payload = parseEvent(event);
-
-    clubId = payload.clubId || helper.CLUB_ID;
-
-    console.log(clubId);
-
-    // let apiResult = await helper.proclubApi.club.getClubMemberStats(clubId);
-
-    // result = await getMemberPlayedGames(payload.playerNameList, 1000628044000, 1550628044000);
-    // console.log("***result***", JSON.stringify(result));
-
-    // result = await getClubPlayedGames(clubId, 1000628044000, 1550628044000);
-    // console.log("***result2***", JSON.stringify(result));
-
-
-    // let batchWriteStatsParams = generateBatchWriteStatsParams(apiResult, payload.blazeIdList);
-    // blazeIdList = batchWriteStatsParams.blazeIdList;
-
-    // await batchWrite(batchWriteStatsParams.params);
-
-  } catch (err) {
-    error = err.stack;
-    // console.log("***err***", err);
-  }
-
-  done(error, { type: 'result', result }, callback);
-};
