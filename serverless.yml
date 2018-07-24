@@ -1,21 +1,4 @@
-# Welcome to Serverless!
-#
-# This file is the main config file for your service.
-# It's very minimal at this point and uses default values.
-# You can always add more config options for more control.
-# We've included some commented out config examples here.
-# Just uncomment any of them to get that config option.
-#
-# For full config options, check the docs:
-#    docs.serverless.com
-#
-# Happy Coding!
-
 service: sls-proclub-crawler
-
-# You can pin your service to only deploy with a specific Serverless version
-# Check out our docs for more details
-# frameworkVersion: "=X.X.X"
 
 package:
   exclude:
@@ -25,10 +8,10 @@ package:
     - .npmignore
     - .git/**
     - .idea/**
-    - handler_backup.js
     - package.json
     - package-lock.json
     - README.MD
+    - data.json
   include:
     - node_modules/axios/
     - node_modules/debug/
@@ -53,50 +36,78 @@ provider:
       Action:
         - dynamodb:*
       Resource:
-        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/Matches_${self:provider.environment.ENV_ID}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/MemberStats_${self:provider.environment.ENV_ID}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/ClubStats_${self:provider.environment.ENV_ID}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/Match_${self:provider.environment.ENV_ID}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/MemberHistory_${self:provider.environment.ENV_ID}"
 
   environment:
     ENV_ID: "001"
-    API_PLATFORM: PS4
-    CLUB_ID: "3634186"
+    CLUB_ID_1: "3634186"
+    CLUB_ID_2: "3876559"
 
 functions:
-  crawl-matches:
-    handler: handler.crawlMatches
-    events:
-      - http:
-          path: crawl
-          method: post
-  save-member-histroy:
-    handler: handler.saveMemberHistory
-    events:
-      - http:
-          path: save-history
-          method: post
+  crawl:
+    handler: handler.crawlMatch
+    # events:
+    #   - http:
+    #       path: crawl
+    #       method: post
+  stats:
+    handler: handler.saveStats
+    # events:
+    #   - http:
+    #       path: stats
+    #       method: post
           
-# stepFunctions:
-#   stateMachines:
-#     crawlProClubMatches:
-#       events:
-#         - http:
-#             path: crawl
-#             method: post
-#         - schedule:
-#             rate: rate(15 minutes)
-#             enabled: true
-#             input:
-#               clubId: ${self:provider.environment.CLUB_ID}
-#               platform: ${self:provider.environment.API_PLATFORM}
-#               stageParams:
-#                 stage: dev
-#       definition:
-#         Comment: "ProClub Crawler"
-#         StartAt: CrawlMatches
-#         States:
-#           CrawlMatches:
-#             Type: Task
-#             Resource: arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl
-#             End: true
+stepFunctions:
+  stateMachines:
+    crawlProClubMatch1:
+      name: crawl-relevant-agency
+      events:
+        - http:
+            path: crawl1
+            method: post
+        - schedule:
+            rate: rate(30 minutes)
+            enabled: true
+            input:
+              clubId: ${self:provider.environment.CLUB_ID_1}
+      definition:
+        Comment: "ProClub Crawler for RELEVANT AGENCY"
+        StartAt: CrawlMatch
+        States:
+          CrawlMatch:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl"
+            Next: SaveStats
+          SaveStats:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-stats"
+            End: true
+    crawlProClubMatch2:
+      name: crawl-temp-workers
+      events:
+        - http:
+            path: crawl2
+            method: post
+        - schedule:
+            rate: rate(30 minutes)
+            enabled: true
+            input:
+              clubId: ${self:provider.environment.CLUB_ID_2}
+      definition:
+        Comment: "ProClub Crawler for TEMP WORKERS"
+        StartAt: CrawlMatch
+        States:
+          CrawlMatch:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl"
+            Next: SaveStats
+          SaveStats:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-stats"
+            End: true
 
 resources:
   Resources:

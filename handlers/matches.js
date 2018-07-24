@@ -1,32 +1,22 @@
 'use strict';
-
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB({ region: 'ap-northeast-1' });
-const docClient = new AWS.DynamoDB.DocumentClient({service: dynamodb});
-// // const docClient = new AWS.DynamoDB.DocumentClient();
-
-const helper = require('../helper/helper');
-
-let clubId;
+const helper = require('../helper/');
+const docClient = helper.DOC_CLIENT;
 
 Date.prototype.yyyymm = function() {
-  var mm = this.getMonth() + 1; // getMonth() is zero-based
+  const mm = this.getMonth() + 1; // getMonth() is zero-based
 
   return [this.getFullYear(),
-          (mm>9 ? '' : '0') + '-' + mm
+          '-',
+          (mm>9 ? '' : '0') + mm
          ].join('');
 };
+
 
 const done = function(error, result, callback) {
   return error ? callback(new Error(error)) : callback(null, result);
 };
 
 const parseEvent = function(event) {
-  // This function cannot be optimised, it's best to
-  // keep it small!
-
-  // console.log("***event***", event);
-
   let payload;
 
   try {
@@ -55,7 +45,7 @@ const generateMonthParams = function(monthList) {
   });
 };
 
-const generateBatchWriteMemberHistoryParams = function(apiResult, matchIdToSaveList) {
+const generateBatchWriteMemberHistoryParams = function(clubId, apiResult, matchIdToSaveList) {
   let paramsList = [];
   let itemList = [];
   let memberHistoryList = [];
@@ -76,6 +66,7 @@ const generateBatchWriteMemberHistoryParams = function(apiResult, matchIdToSaveL
         delete playerStatsObj['vprohackreason'];
 
         playerStatsObj['timestamp'] = timestamp;
+        playerStatsObj['clubId'] = clubId;
         memberHistoryList.push(playerStatsObj);
 
         players[playerStatsObj['playername']] = '';
@@ -150,7 +141,7 @@ const batchWriteMemberHistory = async (paramsList) => {
   return await Promise.all(promiseList);
 }
 
-const generateBatchGetMatchParams = function(apiResult) {
+const generateBatchGetMatchParams = function(clubId, apiResult) {
 
   // generate query params
   let keyList = [];
@@ -232,7 +223,6 @@ const putClubStats = async (clubStats, clubPlayedMatches) => {
 };
 
 const getClubStats = async (clubId, monthList) => {
-
   let keyList = monthList.map(currentMonth => {
     return {
       clubId: clubId,
@@ -311,8 +301,6 @@ const calcClubPlayedMatches = async (clubId, monthList) => {
     });
   });
 
-  // return await Promise.all(promiseList);
-
   let clubPlayedMatchesList = await Promise.all(promiseList);
 
   let clubPlayedMatches = {};
@@ -325,8 +313,8 @@ const calcClubPlayedMatches = async (clubId, monthList) => {
 };
 
 
-module.exports.crawl = async (event, context, callback) => {
-
+module.exports.crawlMatch = async (event, context, callback) => {
+  let payload;
   let matchIdToSaveList;
   let monthList;
   let playerList;
@@ -335,26 +323,20 @@ module.exports.crawl = async (event, context, callback) => {
 
   try {
 
-    const payload = parseEvent(event);
+    payload = parseEvent(event);
 
-    clubId = payload.clubId || helper.CLUB_ID;
+    let apiResult = await helper.PRO_CLUB_API.club.getClubMatchHistory(payload.clubId);
 
-    let apiResult = await helper.proclubApi.club.getClubMatchHistory(clubId);
-
-    let batchGetMatchParams = generateBatchGetMatchParams(apiResult);
+    let batchGetMatchParams = generateBatchGetMatchParams(payload.clubId, apiResult);
 
     let matchIdList = await batchGetMatch(batchGetMatchParams);
-
-    // console.log('***matchIdList***', matchIdList);
   
     matchIdToSaveList = Object.keys(apiResult).filter((key, index) => {
       return !Object.values(matchIdList).includes(key);
     });
 
-    // console.log('***matchIdToSaveList***', JSON.stringify(matchIdToSaveList));
-
     if (matchIdToSaveList.length > 0) {
-      let batchWriteMemberHistoryParams = generateBatchWriteMemberHistoryParams(apiResult, matchIdToSaveList);
+      let batchWriteMemberHistoryParams = generateBatchWriteMemberHistoryParams(payload.clubId, apiResult, matchIdToSaveList);
 
       memberHistoryList = batchWriteMemberHistoryParams.memberHistoryList;
       monthList = batchWriteMemberHistoryParams.monthList;
@@ -362,10 +344,10 @@ module.exports.crawl = async (event, context, callback) => {
 
       await batchWriteMemberHistory(batchWriteMemberHistoryParams.paramsList);
 
-      let clubPlayedMatches = await calcClubPlayedMatches(clubId, monthList);
+      let clubPlayedMatches = await calcClubPlayedMatches(payload.clubId, monthList);
       console.log('***clubPlayedMatches***', JSON.stringify(clubPlayedMatches));
 
-      let clubStats = await getClubStats(clubId, monthList);
+      let clubStats = await getClubStats(payload.clubId, monthList);
       console.log('***clubStats***', JSON.stringify(clubStats));
 
       await putClubStats(clubStats, clubPlayedMatches);
@@ -376,5 +358,5 @@ module.exports.crawl = async (event, context, callback) => {
     // console.log("***err***", err);
   }
 
-  done(error, {type: 'memberHistoryList', playerList, memberHistoryList, clubId, monthList: monthList}, callback);
+  done(error, {type: 'memberHistoryList', memberHistoryList, playerList, monthList}, callback);
 };

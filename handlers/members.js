@@ -1,13 +1,6 @@
 'use strict';
-
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB({ region: 'ap-northeast-1' });
-const docClient = new AWS.DynamoDB.DocumentClient({service: dynamodb});
-// // const docClient = new AWS.DynamoDB.DocumentClient();
-
-const helper = require('../helper/helper');
-
-let clubId;
+const helper = require('../helper/');
+const docClient = helper.DOC_CLIENT;
 
 Date.prototype.yyyymm = function() {
   const mm = this.getMonth() + 1; // getMonth() is zero-based
@@ -35,11 +28,6 @@ const done = function(error, result, callback) {
 }
 
 const parseEvent = function(event) {
-  // This function cannot be optimised, it's best to
-  // keep it small!
-
-  // console.log("***event***", event);
-
   let payload;
 
   try {
@@ -239,30 +227,29 @@ const batchWriteMemberStats = async (memberHistorySummary) => {
   return await Promise.all(promiseList);
 };
 
-
-module.exports.saveHistory = async (event, context, callback) => {
-
+module.exports.saveStats = async (event, context, callback) => {
   let error;
+  let memberStatsList = [];
 
   try {
 
     const payload = parseEvent(event);
 
-    clubId = payload.clubId || helper.CLUB_ID;
+    if (payload.memberHistoryList && payload.memberHistoryList.length > 0) {
+      await batchWriteMemberHistory(payload.memberHistoryList);
+      
+      let memberHistorySummary = await sumMemberHistory(payload.playerList, payload.monthList);
+      console.log('***memberHistorySummary***', JSON.stringify(memberHistorySummary));
 
-    await batchWriteMemberHistory(payload.memberHistoryList);
-    
-    let memberHistorySummary = await sumMemberHistory(payload.playerList, payload.monthList);
-    console.log('***memberHistorySummary***', JSON.stringify(memberHistorySummary));
+      await batchWriteMemberStats(memberHistorySummary);
 
-    await batchWriteMemberStats(memberHistorySummary);
-
-    let memberStatsList = await getMemberStats(payload.playerList, payload.monthList);
-    console.log('***memberStatsList***', JSON.stringify(memberStatsList));
+      memberStatsList = await getMemberStats(payload.playerList, payload.monthList);
+      console.log('***memberStatsList***', JSON.stringify(memberStatsList));      
+    }
 
   } catch (err) {
     error = err.stack;
   }
 
-  done(error, { clubId }, callback);
+  done(error, {memberStatsList}, callback);
 };
