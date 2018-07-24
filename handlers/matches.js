@@ -19,7 +19,7 @@ Date.prototype.yyyymm = function() {
 
 const done = function(error, result, callback) {
   return error ? callback(new Error(error)) : callback(null, result);
-}
+};
 
 const parseEvent = function(event) {
   // This function cannot be optimised, it's best to
@@ -41,18 +41,29 @@ const parseEvent = function(event) {
   }
 
   return payload; // Could be undefined!
-}
+};
 
-const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
+const generateMonthParams = function(monthList) {
+  return monthList.map(yyyymm => {
+    let begin = new Date(yyyymm + 'T00:00:00');
+
+    return {
+      month: yyyymm,
+      begin: begin.getTime(),
+      end: begin.nextMonth().getTime()
+    };
+  });
+};
+
+const generateBatchWriteMemberHistoryParams = function(apiResult, matchIdToSaveList) {
   let paramsList = [];
   let itemList = [];
   let memberHistoryList = [];
-  let monthList = {};
+  let months = {};
   let keys = Object.keys(apiResult);
-  let playerList = {};
+  let players = {};
 
   keys.map((matchId, index) => {
-
     if (matchIdToSaveList.includes(matchId)) {
       // generate memberHistoryList
       let timestamp = parseInt(apiResult[matchId]['timestamp']) * 1000;
@@ -67,14 +78,14 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
         playerStatsObj['timestamp'] = timestamp;
         memberHistoryList.push(playerStatsObj);
 
-        playerList[playerStatsObj['playername']] = '';
+        players[playerStatsObj['playername']] = '';
       });
 
       // generate monthList
       let matchDate = new Date(timestamp);
-      monthList[matchDate.yyyymm()] = '';
+      months[matchDate.yyyymm()] = '';
 
-      // generate paramsList
+      // generate paramsList with multiple itemLists which has up to 25 items
       let opponentName;
       let opponentId;
 
@@ -88,8 +99,8 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
       itemList.push({ 
         PutRequest: {
           Item: {
-            // matchUid: matchUid,
             timestamp: timestamp,
+            duration: matchDate.yyyymm(),
             clubId: clubId,
             matchId: matchId,
             opponent: opponentName,
@@ -101,9 +112,6 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
             tacklesMade: parseInt(apiResult[matchId]['aggregate'][clubId]['tacklesmade']),
             opponentTackleAttempts: parseInt(apiResult[matchId]['aggregate'][opponentId]['tackleattempts']),
             opponentTacklesMade: parseInt(apiResult[matchId]['aggregate'][opponentId]['tacklesmade'])
-            // players: playerList
-            // players2: playersObj,
-            // blazes: blazeObj
           }
         }
       });
@@ -116,18 +124,17 @@ const generateBatchWriteParams = function(apiResult, matchIdToSaveList) {
         paramsList.push(params);
 
         itemList = [];
-
       }
+
+
     }
   });
 
-  console.log('paramsList', JSON.stringify(paramsList));
-
-  return { paramsList, playerList: Object.keys(playerList), memberHistoryList, monthList: Object.keys(monthList) } ;
+  return { paramsList, playerList: Object.keys(players), memberHistoryList, monthList: generateMonthParams(Object.keys(months)) } ;
 }
 
-const batchWrite = function(paramsList) {
-  return paramsList.map(params => {
+const batchWriteMemberHistory = async (paramsList) => {
+  let promiseList = paramsList.map(params => {
     return new Promise((resolve, reject) => {
       docClient.batchWrite(params, async (err, data) => {
         if (err) {
@@ -139,9 +146,11 @@ const batchWrite = function(paramsList) {
       });
     });
   });
+
+  return await Promise.all(promiseList);
 }
 
-const generateBatchGetParams = function(apiResult) {
+const generateBatchGetMatchParams = function(apiResult) {
 
   // generate query params
   let keyList = [];
@@ -158,9 +167,9 @@ const generateBatchGetParams = function(apiResult) {
   params['RequestItems'][`${helper.MATCH_TABLE}`]['Keys'] = keyList;
 
   return params;
-}
+};
 
-const batchGet = function(params) {
+const batchGetMatch = function(params) {
   return new Promise((resolve, reject) => {
     docClient.batchGet(params, async (err, data) => {
       if (err) {
@@ -176,7 +185,145 @@ const batchGet = function(params) {
       }
     });
   });
-}
+};
+
+const putClubStats = async (clubStats, clubPlayedMatches) => {
+  let incremental = 0;
+
+  Object.keys(clubPlayedMatches).map((key, index) => {
+    if (clubStats[key]) {
+      incremental += clubPlayedMatches[key].gamesPlayed - clubStats[key].gamesPlayed;
+      clubStats[key].gamesPlayed = clubPlayedMatches[key].gamesPlayed;
+    } else {
+      incremental += clubPlayedMatches[key].gamesPlayed;
+      clubStats[key] = clubPlayedMatches[key];
+    }
+  });
+
+  clubStats.overall.gamesPlayed += incremental;
+
+  let itemList = [];
+
+  Object.keys(clubStats).map((key, index) => {
+    itemList.push({
+      PutRequest: {
+        Item: {
+          clubId: clubStats[key].clubId,
+          gamesPlayed: clubStats[key].gamesPlayed,
+          duration: key          
+        }
+      }
+    })
+  });
+  
+  let params = JSON.parse(`{"RequestItems": {"${helper.CLUB_STATS_TABLE}": []}}`);
+  params['RequestItems'][`${helper.CLUB_STATS_TABLE}`] = itemList;
+
+  return await new Promise((resolve, reject) => {
+    docClient.batchWrite(params, async (err, data) => {
+      if (err) {
+        console.log(err);
+        reject(err);
+      } else {
+        resolve(data);
+      }
+    });
+  });
+};
+
+const getClubStats = async (clubId, monthList) => {
+
+  let keyList = monthList.map(currentMonth => {
+    return {
+      clubId: clubId,
+      duration: currentMonth.month
+    };
+  });
+
+  keyList.push({
+    clubId: clubId,
+    duration: 'overall'
+  });
+
+  let params = JSON.parse(`{"RequestItems": {"${helper.CLUB_STATS_TABLE}":{"Keys": []}}}`);
+  params['RequestItems'][`${helper.CLUB_STATS_TABLE}`]['Keys'] = keyList;
+
+  let clubStatsList = await new Promise((resolve, reject) => {
+    docClient.batchGet(params, async (err, data) => {
+      if (err) {
+        console.log(err);
+        reject(err);
+      } else {
+        resolve(data.Responses[`${helper.CLUB_STATS_TABLE}`]);
+      }
+    });
+  });
+
+  let clubStats = {};
+
+  clubStatsList.map(currentValue => {
+    clubStats[currentValue.duration] = {clubId: currentValue.clubId, gamesPlayed: currentValue.gamesPlayed};
+  });
+
+  if (!clubStats.overall) {
+    clubStats.overall = {clubId: clubId, gamesPlayed: 0};
+  }
+
+  return await clubStats;
+};
+
+const calcClubPlayedMatches = async (clubId, monthList) => {
+  let paramsList = monthList.map(currentMonth => {
+    return {
+      TableName: helper.MATCH_TABLE,
+      KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
+      ExpressionAttributeValues: {
+        ':hkey': clubId,
+        ':rkey_begin': currentMonth.begin,
+        ':rkey_end': currentMonth.end
+      },
+      ExpressionAttributeNames: {
+        '#hkey': 'clubId',
+        '#rkey': 'timestamp'
+      },
+      ProjectionExpression: "clubId"
+    };
+  });
+
+  let promiseList = paramsList.map(params => {
+    return new Promise((resolve, reject) => {
+      docClient.query(params, async (err, data) => {
+        if (err) {
+          console.log(err);
+          reject(err);
+        } else {
+          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
+
+          let resolved = `{
+            "clubId": "${params.ExpressionAttributeValues[':hkey']}",
+            "duration": "${matchDate.yyyymm()}",
+            "gamesPlayed":  ${data.Count}
+          }`;
+
+          resolve(JSON.parse(resolved));
+        }
+      });
+    });
+  });
+
+  // return await Promise.all(promiseList);
+
+  let clubPlayedMatchesList = await Promise.all(promiseList);
+
+  let clubPlayedMatches = {};
+
+  clubPlayedMatchesList.map(currentValue => {
+    clubPlayedMatches[currentValue.duration] = {clubId: currentValue.clubId, gamesPlayed: currentValue.gamesPlayed};
+  });
+
+  return await clubPlayedMatches;
+};
+
 
 module.exports.crawl = async (event, context, callback) => {
 
@@ -194,9 +341,9 @@ module.exports.crawl = async (event, context, callback) => {
 
     let apiResult = await helper.proclubApi.club.getClubMatchHistory(clubId);
 
-    let batchGetParams = generateBatchGetParams(apiResult);
+    let batchGetMatchParams = generateBatchGetMatchParams(apiResult);
 
-    let matchIdList = await batchGet(batchGetParams);
+    let matchIdList = await batchGetMatch(batchGetMatchParams);
 
     // console.log('***matchIdList***', matchIdList);
   
@@ -207,13 +354,21 @@ module.exports.crawl = async (event, context, callback) => {
     // console.log('***matchIdToSaveList***', JSON.stringify(matchIdToSaveList));
 
     if (matchIdToSaveList.length > 0) {
-      let batchWriteParams = generateBatchWriteParams(apiResult, matchIdToSaveList);
+      let batchWriteMemberHistoryParams = generateBatchWriteMemberHistoryParams(apiResult, matchIdToSaveList);
 
-      memberHistoryList = batchWriteParams.memberHistoryList;
-      monthList = batchWriteParams.monthList;
-      playerList = batchWriteParams.playerList;
+      memberHistoryList = batchWriteMemberHistoryParams.memberHistoryList;
+      monthList = batchWriteMemberHistoryParams.monthList;
+      playerList = batchWriteMemberHistoryParams.playerList;
 
-      await Promise.all(batchWrite(batchWriteParams.paramsList));
+      await batchWriteMemberHistory(batchWriteMemberHistoryParams.paramsList);
+
+      let clubPlayedMatches = await calcClubPlayedMatches(clubId, monthList);
+      console.log('***clubPlayedMatches***', JSON.stringify(clubPlayedMatches));
+
+      let clubStats = await getClubStats(clubId, monthList);
+      console.log('***clubStats***', JSON.stringify(clubStats));
+
+      await putClubStats(clubStats, clubPlayedMatches);
     }
 
   } catch (err) {

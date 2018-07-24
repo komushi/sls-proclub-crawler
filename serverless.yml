@@ -73,54 +73,51 @@ functions:
       - http:
           path: save-history
           method: post
-  save-member-stats:
-    handler: handler.saveMemberStats
-    events:
-      - http:
-          path: save-stats
-          method: post
-
           
-stepFunctions:
-  stateMachines:
-    crawlProClubMatches:
-      events:
-        - http:
-            path: crawl
-            method: post
-        - schedule:
-            rate: rate(15 minutes)
-            enabled: true
-            input:
-              clubId: ${self:provider.environment.CLUB_ID}
-              platform: ${self:provider.environment.API_PLATFORM}
-              stageParams:
-                stage: dev
-      definition:
-        Comment: "ProClub Crawler"
-        StartAt: CrawlMatches
-        States:
-          CrawlMatches:
-            Type: Task
-            Resource: arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl
-            End: true
+# stepFunctions:
+#   stateMachines:
+#     crawlProClubMatches:
+#       events:
+#         - http:
+#             path: crawl
+#             method: post
+#         - schedule:
+#             rate: rate(15 minutes)
+#             enabled: true
+#             input:
+#               clubId: ${self:provider.environment.CLUB_ID}
+#               platform: ${self:provider.environment.API_PLATFORM}
+#               stageParams:
+#                 stage: dev
+#       definition:
+#         Comment: "ProClub Crawler"
+#         StartAt: CrawlMatches
+#         States:
+#           CrawlMatches:
+#             Type: Task
+#             Resource: arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl
+#             End: true
 
 resources:
   Resources:
-    MemberTable:
+    ClubStatsTable:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
           - AttributeName: clubId
             AttributeType: S
+          - AttributeName: duration
+            AttributeType: S
         KeySchema:
           - AttributeName: clubId
             KeyType: HASH
+          - AttributeName: duration
+            KeyType: RANGE
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
-        TableName: Club_${self:provider.environment.ENV_ID}
+        TableName: ClubStats_${self:provider.environment.ENV_ID}
 
     MatchTable:
       Type: AWS::DynamoDB::Table
@@ -160,17 +157,21 @@ resources:
           WriteCapacityUnits: 5
         TableName: MemberHistory_${self:provider.environment.ENV_ID}
 
-    MemberTable:
+    MemberStatsTable:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
           - AttributeName: playername
             AttributeType: S
+          - AttributeName: duration
+            AttributeType: S
         KeySchema:
           - AttributeName: playername
             KeyType: HASH
+          - AttributeName: duration
+            KeyType: RANGE
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
-        TableName: Member_${self:provider.environment.ENV_ID}
+        TableName: MemberStats_${self:provider.environment.ENV_ID}
