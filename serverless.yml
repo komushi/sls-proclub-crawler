@@ -49,10 +49,10 @@ provider:
 functions:
   crawl:
     handler: handler.crawlMatch
-    # events:
-    #   - http:
-    #       path: crawl
-    #       method: post
+    events:
+      - http:
+          path: crawl
+          method: post
   stats:
     handler: handler.saveStats
     # events:
@@ -62,42 +62,24 @@ functions:
           
 stepFunctions:
   stateMachines:
-    crawlProClubMatch1:
-      name: crawl-relevant-agency
+    crawlProClub:
+      name: crawl-pro-club
       events:
-        - http:
-            path: crawl1
-            method: post
+        # - http:
+        #     path: crawl
+        #     method: post
         - schedule:
             rate: rate(30 minutes)
             enabled: true
             input:
               clubId: ${self:provider.environment.CLUB_ID_1}
-      definition:
-        Comment: "ProClub Crawler for RELEVANT AGENCY"
-        StartAt: CrawlMatch
-        States:
-          CrawlMatch:
-            Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-crawl"
-            Next: SaveStats
-          SaveStats:
-            Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-stats"
-            End: true
-    crawlProClubMatch2:
-      name: crawl-temp-workers
-      events:
-        - http:
-            path: crawl2
-            method: post
         - schedule:
             rate: rate(30 minutes)
             enabled: true
             input:
               clubId: ${self:provider.environment.CLUB_ID_2}
       definition:
-        Comment: "ProClub Crawler for TEMP WORKERS"
+        Comment: "ProClub Crawler for RELEVANT AGENCY and TEMP WORKERS"
         StartAt: CrawlMatch
         States:
           CrawlMatch:

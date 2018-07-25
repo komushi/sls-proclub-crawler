@@ -45,7 +45,7 @@ const generateMonthParams = function(monthList) {
   });
 };
 
-const generateBatchWriteMemberHistoryParams = function(clubId, apiResult, matchIdToSaveList) {
+const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveList) {
   let paramsList = [];
   let itemList = [];
   let memberHistoryList = [];
@@ -108,7 +108,7 @@ const generateBatchWriteMemberHistoryParams = function(clubId, apiResult, matchI
       });
 
 
-      if (itemList.length == 25 || index + 1 == keys.length) {
+      if (itemList.length == 25 || index + 1 == matchIdToSaveList.length) {
         let params = JSON.parse(`{"RequestItems": {"${helper.MATCH_TABLE}": []}}`);
         params['RequestItems'][`${helper.MATCH_TABLE}`] = Array.from(itemList);
 
@@ -124,7 +124,7 @@ const generateBatchWriteMemberHistoryParams = function(clubId, apiResult, matchI
   return { paramsList, playerList: Object.keys(players), memberHistoryList, monthList: generateMonthParams(Object.keys(months)) } ;
 }
 
-const batchWriteMemberHistory = async (paramsList) => {
+const batchWriteMatch = async (paramsList) => {
   let promiseList = paramsList.map(params => {
     return new Promise((resolve, reject) => {
       docClient.batchWrite(params, async (err, data) => {
@@ -336,13 +336,13 @@ module.exports.crawlMatch = async (event, context, callback) => {
     });
 
     if (matchIdToSaveList.length > 0) {
-      let batchWriteMemberHistoryParams = generateBatchWriteMemberHistoryParams(payload.clubId, apiResult, matchIdToSaveList);
+      let batchWriteMatchParams = generateBatchWriteMatchParams(payload.clubId, apiResult, matchIdToSaveList);
 
-      memberHistoryList = batchWriteMemberHistoryParams.memberHistoryList;
-      monthList = batchWriteMemberHistoryParams.monthList;
-      playerList = batchWriteMemberHistoryParams.playerList;
+      memberHistoryList = batchWriteMatchParams.memberHistoryList;
+      monthList = batchWriteMatchParams.monthList;
+      playerList = batchWriteMatchParams.playerList;
 
-      await batchWriteMemberHistory(batchWriteMemberHistoryParams.paramsList);
+      await batchWriteMatch(batchWriteMatchParams.paramsList);
 
       let clubPlayedMatches = await calcClubPlayedMatches(payload.clubId, monthList);
       console.log('***clubPlayedMatches***', JSON.stringify(clubPlayedMatches));
