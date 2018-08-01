@@ -58,6 +58,7 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
       // generate memberHistoryList
       let timestamp = parseInt(apiResult[matchId]['timestamp']) * 1000;
       let playersObj = apiResult[matchId]['players'][clubId];
+      let gameDate = (new Date(timestamp - helper.TIMEZONE_OFFSET)).toISOString().slice(0, -1);
       
       Object.keys(playersObj).map((k, i) => {
         let playerStatsObj = playersObj[k];
@@ -66,6 +67,7 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
         delete playerStatsObj['vprohackreason'];
 
         playerStatsObj['timestamp'] = timestamp;
+        playerStatsObj['date'] = gameDate;
         playerStatsObj['clubId'] = clubId;
         memberHistoryList.push(playerStatsObj);
 
@@ -92,6 +94,7 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
           Item: {
             timestamp: timestamp,
             duration: matchDate.yyyymm(),
+            date: gameDate,
             clubId: clubId,
             matchId: matchId,
             opponent: opponentName,

@@ -9,6 +9,7 @@ let clubStatsTable = `ClubStats_${envId}`;
 let matchTable = `Match_${envId}`;
 let memberStatsTable = `MemberStats_${envId}`;
 let memberHistoryTable = `MemberHistory_${envId}`;
+let tzoffset = -480 * 60000;
 
 module.exports = {
 	PRO_CLUB_API: proclubApi, 
@@ -16,5 +17,6 @@ module.exports = {
 	CLUB_STATS_TABLE: clubStatsTable,
 	MATCH_TABLE: matchTable,
 	MEMBER_STATS_TABLE: memberStatsTable,
-	MEMBER_HISTORY_TABLE: memberHistoryTable
+	MEMBER_HISTORY_TABLE: memberHistoryTable,
+	TIMEZONE_OFFSET: tzoffset
 };

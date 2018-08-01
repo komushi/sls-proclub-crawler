@@ -21,6 +21,9 @@ curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/craw
 
 curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/stats --data @'data.json'
 
+curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/patch --data '{"clubId": "3634186"}'
+
+curl -vvv -X POST -H "Content-Type: application/json" http://localhost:3000/patch2 --data '{"playername": "surfacepro4"}'
 ```
 
 ```

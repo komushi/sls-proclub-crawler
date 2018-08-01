@@ -49,17 +49,29 @@ provider:
 functions:
   crawl:
     handler: handler.crawlMatch
-    events:
-      - http:
-          path: crawl
-          method: post
+    # events:
+    #   - http:
+    #       path: crawl
+    #       method: post
   stats:
     handler: handler.saveStats
     # events:
     #   - http:
     #       path: stats
     #       method: post
-          
+  # patch:
+  #   handler: handler.patch
+  #   events:
+  #     - http:
+  #         path: patch
+  #         method: post
+  # patch2:
+  #   handler: handler.patchMember
+  #   events:
+  #     - http:
+  #         path: patch2
+  #         method: post
+    
 stepFunctions:
   stateMachines:
     crawlProClub:
