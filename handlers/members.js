@@ -2,27 +2,6 @@
 const helper = require('../helper/');
 const docClient = helper.DOC_CLIENT;
 
-Date.prototype.yyyymm = function() {
-  const mm = this.getMonth() + 1; // getMonth() is zero-based
-
-  return [this.getFullYear(),
-          '-',
-          (mm>9 ? '' : '0') + mm
-         ].join('');
-};
-
-Date.prototype.nextMonth = function() {
-  let result;
-
-  if (this.getMonth() == 11) {
-      result = new Date(this.getFullYear() + 1, 0, 1);
-  } else {
-      result = new Date(this.getFullYear(), this.getMonth() + 1, 1);
-  }
-
-  return result;
-};
-
 const done = function(error, result, callback) {
   return error ? callback(new Error(error)) : callback(null, result);
 }
@@ -81,18 +60,18 @@ const batchWriteMemberHistory = async (memberHistoryList) => {
   return await Promise.all(promiseList);
 };
 
-const sumMemberHistory = async (playerList, monthList) => {
+const sumMemberHistory = async (playerList, durationList, durationFlag) => {
   let paramsList = [];
 
   playerList.map(playerName => {
-    let params = monthList.map(currentMonth => {
+    let params = durationList.map(currentDuration => {
       return {
         TableName: helper.MEMBER_HISTORY_TABLE,
         KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
         ExpressionAttributeValues: {
           ':hkey': playerName,
-          ':rkey_begin': currentMonth.begin,
-          ':rkey_end': currentMonth.end
+          ':rkey_begin': currentDuration.begin,
+          ':rkey_end': currentDuration.end
         },
         ExpressionAttributeNames: {
           '#hkey': 'playername',
@@ -135,12 +114,20 @@ const sumMemberHistory = async (playerList, monthList) => {
           }
 
           // console.log('***aggregated***', aggregated);
-
-          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
+          let duration;
+          if (durationFlag === 'monthly') {
+            duration = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']))).yyyymm();
+          } else if (durationFlag === 'daily') {
+            // let tmpString = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).toISOString();
+            // console.log('tmpString', tmpString);
+            // let tmp2String = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']))).toISOString();
+            // console.log('tmp2String', tmp2String);
+            duration = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).toISOString().slice(0, 10);
+          }
 
           let resolved = `{
             "playername": "${params.ExpressionAttributeValues[':hkey']}",
-            "duration": "${matchDate.yyyymm()}",
+            "duration": "${duration}",
             "gamesplayed":  ${data.Count},
             "shots": ${aggregated.shots},
             "goals": ${aggregated.goals},
@@ -238,13 +225,18 @@ module.exports.saveStats = async (event, context, callback) => {
     if (payload.memberHistoryList && payload.memberHistoryList.length > 0) {
       await batchWriteMemberHistory(payload.memberHistoryList);
       
-      let memberHistorySummary = await sumMemberHistory(payload.playerList, payload.monthList);
-      console.log('***memberHistorySummary***', JSON.stringify(memberHistorySummary));
+      let memberHistoryMonthlySummary = await sumMemberHistory(payload.playerList, payload.monthList, 'monthly');
+      console.log('***memberHistoryMonthlySummary***', JSON.stringify(memberHistoryMonthlySummary));
 
-      await batchWriteMemberStats(memberHistorySummary);
+      let memberHistoryDailySummary = await sumMemberHistory(payload.playerList, payload.dayList, 'daily');
+      console.log('***memberHistoryDailySummary***', JSON.stringify(memberHistoryDailySummary));
 
-      memberStatsList = await getMemberStats(payload.playerList, payload.monthList);
-      console.log('***memberStatsList***', JSON.stringify(memberStatsList));      
+      await batchWriteMemberStats(memberHistoryMonthlySummary);
+
+      await batchWriteMemberStats(memberHistoryDailySummary);
+
+      // memberStatsList = await getMemberStats(payload.playerList, payload.monthList);
+      // console.log('***memberStatsList***', JSON.stringify(memberStatsList));      
     }
 
   } catch (err) {

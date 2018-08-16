@@ -2,16 +2,6 @@
 const helper = require('../helper/');
 const docClient = helper.DOC_CLIENT;
 
-Date.prototype.yyyymm = function() {
-  const mm = this.getMonth() + 1; // getMonth() is zero-based
-
-  return [this.getFullYear(),
-          '-',
-          (mm>9 ? '' : '0') + mm
-         ].join('');
-};
-
-
 const done = function(error, result, callback) {
   return error ? callback(new Error(error)) : callback(null, result);
 };
@@ -35,12 +25,26 @@ const parseEvent = function(event) {
 
 const generateMonthParams = function(monthList) {
   return monthList.map(yyyymm => {
-    let begin = new Date(yyyymm + 'T00:00:00');
+    let begin = new Date(yyyymm + 'T00:00:00Z');
 
     return {
       month: yyyymm,
-      begin: begin.getTime(),
-      end: begin.nextMonth().getTime()
+      begin: begin.getTime() + helper.TIMEZONE_OFFSET,
+      end: begin.nextMonth().getTime() + helper.TIMEZONE_OFFSET
+    };
+  });
+};
+
+const generateDayParams = function(dayList) {
+  return dayList.map(yyyymmdd => {
+    let begin = new Date(yyyymmdd + 'T00:00:00Z');
+    let end = new Date(begin);
+    end.setDate(begin.getDate()+1);
+
+    return {
+      day: yyyymmdd,
+      begin: begin.getTime() + helper.TIMEZONE_OFFSET,
+      end: end.getTime() + helper.TIMEZONE_OFFSET
     };
   });
 };
@@ -50,6 +54,7 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
   let itemList = [];
   let memberHistoryList = [];
   let months = {};
+  let days = {};
   let keys = Object.keys(apiResult);
   let players = {};
 
@@ -77,6 +82,9 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
       // generate monthList
       let matchDate = new Date(timestamp);
       months[matchDate.yyyymm()] = '';
+
+      // generate dayList
+      days[(new Date(timestamp - helper.TIMEZONE_OFFSET)).toISOString().slice(0, 10)] = '';
 
       // generate paramsList with multiple itemLists which has up to 25 items
       let opponentName;
@@ -119,12 +127,10 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
 
         itemList = [];
       }
-
-
     }
   });
 
-  return { paramsList, playerList: Object.keys(players), memberHistoryList, monthList: generateMonthParams(Object.keys(months)) } ;
+  return { paramsList, playerList: Object.keys(players), memberHistoryList, monthList: generateMonthParams(Object.keys(months)), dayList: generateDayParams(Object.keys(days)) } ;
 }
 
 const batchWriteMatch = async (paramsList) => {
@@ -320,6 +326,7 @@ module.exports.crawlMatch = async (event, context, callback) => {
   let payload;
   let matchIdToSaveList;
   let monthList;
+  let dayList;
   let playerList;
   let error;
   let memberHistoryList = [];
@@ -343,6 +350,7 @@ module.exports.crawlMatch = async (event, context, callback) => {
 
       memberHistoryList = batchWriteMatchParams.memberHistoryList;
       monthList = batchWriteMatchParams.monthList;
+      dayList = batchWriteMatchParams.dayList;
       playerList = batchWriteMatchParams.playerList;
 
       await batchWriteMatch(batchWriteMatchParams.paramsList);
@@ -361,5 +369,5 @@ module.exports.crawlMatch = async (event, context, callback) => {
     // console.log("***err***", err);
   }
 
-  done(error, {type: 'memberHistoryList', memberHistoryList, playerList, monthList}, callback);
+  done(error, {type: 'memberHistoryList', memberHistoryList, playerList, monthList, dayList}, callback);
 };

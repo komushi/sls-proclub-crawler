@@ -20,3 +20,24 @@ module.exports = {
 	MEMBER_HISTORY_TABLE: memberHistoryTable,
 	TIMEZONE_OFFSET: tzoffset
 };
+
+Date.prototype.yyyymm = function() {
+  const mm = this.getMonth() + 1; // getMonth() is zero-based
+
+  return [this.getFullYear(),
+          '-',
+          (mm>9 ? '' : '0') + mm
+         ].join('');
+};
+
+Date.prototype.nextMonth = function() {
+  let result;
+
+  if (this.getMonth() == 11) {
+      result = new Date(this.getFullYear() + 1, 0, 1);
+  } else {
+      result = new Date(this.getFullYear(), this.getMonth() + 1, 1);
+  }
+
+  return result;
+};

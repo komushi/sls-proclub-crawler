@@ -2,8 +2,8 @@
 
 const matchesHandler = require('./handlers/matches');
 const membersHandler = require('./handlers/members');
-const patchHandler = require('./handlers/patch');
-const patchMemberHandler = require('./handlers/patchMember');
+// const patchHandler = require('./handlers/patch');
+// const patchMemberHandler = require('./handlers/patchMember');
 
 module.exports.crawlMatch = async (event, context, callback) => {
   await matchesHandler.crawlMatch(event, context, callback);

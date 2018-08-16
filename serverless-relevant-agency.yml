@@ -1,4 +1,4 @@
-service: sls-proclub-crawler-terminator
+service: sls-proclub-crawler
 
 package:
   exclude:
@@ -42,11 +42,9 @@ provider:
         - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/MemberHistory_${self:provider.environment.ENV_ID}"
 
   environment:
-    ENV_ID: "132784"
-    CLUB_ID: "132784"
-    # ENV_ID: "001"
-    # CLUB_ID_1: "3634186"
-    # CLUB_ID_2: "3876559"
+    ENV_ID: "001"
+    CLUB_ID_1: "3634186"
+    CLUB_ID_2: "3876559"
 
 functions:
   crawl:
@@ -61,11 +59,23 @@ functions:
     #   - http:
     #       path: stats
     #       method: post
+  # patch:
+  #   handler: handler.patch
+  #   events:
+  #     - http:
+  #         path: patch
+  #         method: post
+  # patch2:
+  #   handler: handler.patchMember
+  #   events:
+  #     - http:
+  #         path: patch2
+  #         method: post
     
 stepFunctions:
   stateMachines:
     crawlProClub:
-      name: crawl-pro-club-terminator
+      name: crawl-pro-club
       events:
         # - http:
         #     path: crawl
@@ -74,14 +84,14 @@ stepFunctions:
             rate: rate(30 minutes)
             enabled: true
             input:
-              clubId: ${self:provider.environment.CLUB_ID}
-        # - schedule:
-        #     rate: rate(30 minutes)
-        #     enabled: true
-        #     input:
-        #       clubId: ${self:provider.environment.CLUB_ID_2}
+              clubId: ${self:provider.environment.CLUB_ID_1}
+        - schedule:
+            rate: rate(30 minutes)
+            enabled: true
+            input:
+              clubId: ${self:provider.environment.CLUB_ID_2}
       definition:
-        Comment: "ProClub Crawler for terminator"
+        Comment: "ProClub Crawler for RELEVANT AGENCY and TEMP WORKERS"
         StartAt: CrawlMatch
         States:
           CrawlMatch:
@@ -97,7 +107,7 @@ resources:
   Resources:
     ClubStatsTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
           - AttributeName: clubId
@@ -116,7 +126,7 @@ resources:
 
     MatchTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
           - AttributeName: clubId
@@ -135,7 +145,7 @@ resources:
 
     MemberHistoryTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
           - AttributeName: playername
@@ -154,7 +164,7 @@ resources:
 
     MemberStatsTable:
       Type: AWS::DynamoDB::Table
-      DeletionPolicy: Retain
+      DeletionPolicy: Delete
       Properties:
         AttributeDefinitions:
           - AttributeName: playername
