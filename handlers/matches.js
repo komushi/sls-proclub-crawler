@@ -63,7 +63,14 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
       // generate memberHistoryList
       let timestamp = parseInt(apiResult[matchId]['timestamp']) * 1000;
       let playersObj = apiResult[matchId]['players'][clubId];
-      let gameDate = (new Date(timestamp - helper.TIMEZONE_OFFSET)).toISOString().slice(0, -1);
+      let gameDate = (new Date(timestamp - helper.TIMEZONE_OFFSET));
+      // let gameDate = (new Date(timestamp - helper.TIMEZONE_OFFSET)).toISOString().slice(0, -1);
+
+      // generate dayList
+      days[gameDate.toISOString().slice(0, 10)] = '';
+
+      // generate monthList
+      months[gameDate.yyyymm()] = '';
       
       Object.keys(playersObj).map((k, i) => {
         let playerStatsObj = playersObj[k];
@@ -72,19 +79,15 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
         delete playerStatsObj['vprohackreason'];
 
         playerStatsObj['timestamp'] = timestamp;
-        playerStatsObj['date'] = gameDate;
+        playerStatsObj['date'] = gameDate.toISOString().slice(0, 10);
         playerStatsObj['clubId'] = clubId;
         memberHistoryList.push(playerStatsObj);
 
         players[playerStatsObj['playername']] = '';
       });
 
-      // generate monthList
-      let matchDate = new Date(timestamp);
-      months[matchDate.yyyymm()] = '';
 
-      // generate dayList
-      days[(new Date(timestamp - helper.TIMEZONE_OFFSET)).toISOString().slice(0, 10)] = '';
+
 
       // generate paramsList with multiple itemLists which has up to 25 items
       let opponentName;
@@ -101,8 +104,8 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
         PutRequest: {
           Item: {
             timestamp: timestamp,
-            duration: matchDate.yyyymm(),
-            date: gameDate,
+            duration: gameDate.yyyymm(),
+            date: gameDate.toISOString().slice(0, 10),
             clubId: clubId,
             matchId: matchId,
             opponent: opponentName,
@@ -120,8 +123,8 @@ const generateBatchWriteMatchParams = function(clubId, apiResult, matchIdToSaveL
 
 
       if (itemList.length == 25 || index + 1 == matchIdToSaveList.length) {
-        let params = JSON.parse(`{"RequestItems": {"${helper.MATCH_TABLE}": []}}`);
-        params['RequestItems'][`${helper.MATCH_TABLE}`] = Array.from(itemList);
+        let params = JSON.parse(`{"RequestItems": {"${helper.TBL_CLUB_HISTORY}": []}}`);
+        params['RequestItems'][`${helper.TBL_CLUB_HISTORY}`] = Array.from(itemList);
 
         paramsList.push(params);
 
@@ -163,8 +166,8 @@ const generateBatchGetMatchParams = function(clubId, apiResult) {
     });
   });
 
-  let params = JSON.parse(`{"RequestItems": {"${helper.MATCH_TABLE}":{"Keys": [], "ProjectionExpression": "matchId"}}}`);
-  params['RequestItems'][`${helper.MATCH_TABLE}`]['Keys'] = keyList;
+  let params = JSON.parse(`{"RequestItems": {"${helper.TBL_CLUB_HISTORY}":{"Keys": [], "ProjectionExpression": "matchId"}}}`);
+  params['RequestItems'][`${helper.TBL_CLUB_HISTORY}`]['Keys'] = keyList;
 
   return params;
 };
@@ -178,7 +181,7 @@ const batchGetMatch = function(params) {
       } else {
         // console.log(JSON.stringify(data));
 
-        let matchIdList = data['Responses'][`${helper.MATCH_TABLE}`].map((matchIdObj) => {
+        let matchIdList = data['Responses'][`${helper.TBL_CLUB_HISTORY}`].map((matchIdObj) => {
           return matchIdObj['matchId'];
         });
         resolve(matchIdList);
@@ -216,8 +219,8 @@ const putClubStats = async (clubStats, clubPlayedMatches) => {
     })
   });
   
-  let params = JSON.parse(`{"RequestItems": {"${helper.CLUB_STATS_TABLE}": []}}`);
-  params['RequestItems'][`${helper.CLUB_STATS_TABLE}`] = itemList;
+  let params = JSON.parse(`{"RequestItems": {"${helper.TBL_CLUB_STATS}": []}}`);
+  params['RequestItems'][`${helper.TBL_CLUB_STATS}`] = itemList;
 
   return await new Promise((resolve, reject) => {
     docClient.batchWrite(params, async (err, data) => {
@@ -244,8 +247,8 @@ const getClubStats = async (clubId, monthList) => {
     duration: 'overall'
   });
 
-  let params = JSON.parse(`{"RequestItems": {"${helper.CLUB_STATS_TABLE}":{"Keys": []}}}`);
-  params['RequestItems'][`${helper.CLUB_STATS_TABLE}`]['Keys'] = keyList;
+  let params = JSON.parse(`{"RequestItems": {"${helper.TBL_CLUB_STATS}":{"Keys": []}}}`);
+  params['RequestItems'][`${helper.TBL_CLUB_STATS}`]['Keys'] = keyList;
 
   let clubStatsList = await new Promise((resolve, reject) => {
     docClient.batchGet(params, async (err, data) => {
@@ -253,7 +256,7 @@ const getClubStats = async (clubId, monthList) => {
         console.log(err);
         reject(err);
       } else {
-        resolve(data.Responses[`${helper.CLUB_STATS_TABLE}`]);
+        resolve(data.Responses[`${helper.TBL_CLUB_STATS}`]);
       }
     });
   });
@@ -274,7 +277,7 @@ const getClubStats = async (clubId, monthList) => {
 const calcClubPlayedMatches = async (clubId, monthList) => {
   let paramsList = monthList.map(currentMonth => {
     return {
-      TableName: helper.MATCH_TABLE,
+      TableName: helper.TBL_CLUB_HISTORY,
       KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
       ExpressionAttributeValues: {
         ':hkey': clubId,
@@ -296,11 +299,9 @@ const calcClubPlayedMatches = async (clubId, monthList) => {
           console.log(err);
           reject(err);
         } else {
-          let matchDate = new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']));
-
           let resolved = `{
             "clubId": "${params.ExpressionAttributeValues[':hkey']}",
-            "duration": "${matchDate.yyyymm()}",
+            "duration": "${(new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).yyyymm()}",
             "gamesPlayed":  ${data.Count}
           }`;
 
@@ -352,6 +353,8 @@ module.exports.crawlMatch = async (event, context, callback) => {
       monthList = batchWriteMatchParams.monthList;
       dayList = batchWriteMatchParams.dayList;
       playerList = batchWriteMatchParams.playerList;
+      console.log('***monthList***', JSON.stringify(monthList));
+      console.log('***dayList***', JSON.stringify(dayList));
 
       await batchWriteMatch(batchWriteMatchParams.paramsList);
 

@@ -4,20 +4,20 @@ const AWS = require('aws-sdk');
 const docClient = new AWS.DynamoDB.DocumentClient();
 const proclubApi = require('./proclubApi');
 
-let envId = process.env.ENV_ID;
-let clubStatsTable = `ClubStats_${envId}`;
-let matchTable = `Match_${envId}`;
-let memberStatsTable = `MemberStats_${envId}`;
-let memberHistoryTable = `MemberHistory_${envId}`;
-let tzoffset = -480 * 60000;
+let TblClubStats = process.env.TBL_CLUB_STATS;
+let TblClubHistory = process.env.TBL_CLUB_HISTORY;
+let TblMemberHistory = process.env.TBL_MEMBER_HISTORY;
+let TblMemberStats = process.env.TBL_MEMBER_STATS;
+// let tzoffset = -480 * 60000;
+let tzoffset = process.env.TIMEZONE_OFFSET_HOURS * 60 * 60000;
 
 module.exports = {
 	PRO_CLUB_API: proclubApi, 
 	DOC_CLIENT: docClient, 
-	CLUB_STATS_TABLE: clubStatsTable,
-	MATCH_TABLE: matchTable,
-	MEMBER_STATS_TABLE: memberStatsTable,
-	MEMBER_HISTORY_TABLE: memberHistoryTable,
+	TBL_CLUB_STATS: TblClubStats,
+	TBL_CLUB_HISTORY: TblClubHistory,
+	TBL_MEMBER_HISTORY: TblMemberHistory,
+	TBL_MEMBER_STATS: TblMemberStats,
 	TIMEZONE_OFFSET: tzoffset
 };
 

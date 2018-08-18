@@ -1,4 +1,4 @@
-service: sls-proclub-crawler-terminator
+service: sls-proclub-crawler-${self:provider.environment.ENV_ID}
 
 package:
   exclude:
@@ -36,42 +36,37 @@ provider:
       Action:
         - dynamodb:*
       Resource:
-        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/MemberStats_${self:provider.environment.ENV_ID}"
-        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/ClubStats_${self:provider.environment.ENV_ID}"
-        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/Match_${self:provider.environment.ENV_ID}"
-        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/MemberHistory_${self:provider.environment.ENV_ID}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:provider.environment.TBL_CLUB_HISTORY}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:provider.environment.TBL_CLUB_STATS}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:provider.environment.TBL_MEMBER_HISTORY}"
+        - "arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:provider.environment.TBL_MEMBER_STATS}"
 
   environment:
-    ENV_ID: "132784"
+    ENV_ID: "terminator"
     CLUB_ID: "132784"
-    # ENV_ID: "001"
-    # CLUB_ID_1: "3634186"
-    # CLUB_ID_2: "3876559"
+    TBL_CLUB_HISTORY: "FifaClubHistory_${self:provider.environment.ENV_ID}"
+    TBL_CLUB_STATS: "FifaClubStats_${self:provider.environment.ENV_ID}"
+    TBL_MEMBER_HISTORY: "FifaMemberHistory_${self:provider.environment.ENV_ID}"
+    TBL_MEMBER_STATS: "FifaMemberStats_${self:provider.environment.ENV_ID}"
+    TIMEZONE_OFFSET_HOURS: -8
 
 functions:
   crawl:
     handler: handler.crawlMatch
-    # events:
-    #   - http:
-    #       path: crawl
-    #       method: post
+
   stats:
     handler: handler.saveStats
-    # events:
-    #   - http:
-    #       path: stats
-    #       method: post
-    
+
 stepFunctions:
   stateMachines:
     crawlProClub:
-      name: crawl-pro-club-terminator
+      name: crawl-pro-club-${self:provider.environment.ENV_ID}
       events:
         # - http:
         #     path: crawl
         #     method: post
         - schedule:
-            rate: rate(30 minutes)
+            rate: rate(60 minutes)
             enabled: true
             input:
               clubId: ${self:provider.environment.CLUB_ID}
@@ -81,7 +76,7 @@ stepFunctions:
         #     input:
         #       clubId: ${self:provider.environment.CLUB_ID_2}
       definition:
-        Comment: "ProClub Crawler for terminator"
+        Comment: "ProClub Crawler for ${self:provider.environment.ENV_ID}"
         StartAt: CrawlMatch
         States:
           CrawlMatch:
@@ -112,9 +107,9 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
-        TableName: ClubStats_${self:provider.environment.ENV_ID}
+        TableName: ${self:provider.environment.TBL_CLUB_STATS}
 
-    MatchTable:
+    ClubHistoryTable:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Retain
       Properties:
@@ -131,7 +126,7 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
-        TableName: Match_${self:provider.environment.ENV_ID}
+        TableName: ${self:provider.environment.TBL_CLUB_HISTORY}
 
     MemberHistoryTable:
       Type: AWS::DynamoDB::Table
@@ -150,7 +145,7 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
-        TableName: MemberHistory_${self:provider.environment.ENV_ID}
+        TableName: ${self:provider.environment.TBL_MEMBER_HISTORY}
 
     MemberStatsTable:
       Type: AWS::DynamoDB::Table
@@ -169,4 +164,4 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
-        TableName: MemberStats_${self:provider.environment.ENV_ID}
+        TableName: ${self:provider.environment.TBL_MEMBER_STATS}

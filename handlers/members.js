@@ -36,8 +36,8 @@ const batchWriteMemberHistory = async (memberHistoryList) => {
     });
 
     if (itemList.length == 25 || index + 1 == memberHistoryList.length) {
-      let params = JSON.parse(`{"RequestItems": {"${helper.MEMBER_HISTORY_TABLE}": []}}`);
-      params['RequestItems'][`${helper.MEMBER_HISTORY_TABLE}`] = Array.from(itemList);
+      let params = JSON.parse(`{"RequestItems": {"${helper.TBL_MEMBER_HISTORY}": []}}`);
+      params['RequestItems'][`${helper.TBL_MEMBER_HISTORY}`] = Array.from(itemList);
 
       paramsList.push(params);
       itemList = [];
@@ -66,7 +66,7 @@ const sumMemberHistory = async (playerList, durationList, durationFlag) => {
   playerList.map(playerName => {
     let params = durationList.map(currentDuration => {
       return {
-        TableName: helper.MEMBER_HISTORY_TABLE,
+        TableName: helper.TBL_MEMBER_HISTORY,
         KeyConditionExpression: '#hkey = :hkey and #rkey BETWEEN :rkey_begin AND :rkey_end',
         ExpressionAttributeValues: {
           ':hkey': playerName,
@@ -116,12 +116,14 @@ const sumMemberHistory = async (playerList, durationList, durationFlag) => {
           // console.log('***aggregated***', aggregated);
           let duration;
           if (durationFlag === 'monthly') {
-            duration = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']))).yyyymm();
+            console.log('durationFlag', durationFlag);
+            duration = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).yyyymm();
           } else if (durationFlag === 'daily') {
-            // let tmpString = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).toISOString();
+            console.log('durationFlag', durationFlag);  
+            // let tmpStringTIMEZONE_OFFSET = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).toISOString();
+            // console.log('tmpStringTIMEZONE_OFFSET', tmpStringTIMEZONE_OFFSET);
+            // let tmpString = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']))).toISOString();
             // console.log('tmpString', tmpString);
-            // let tmp2String = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']))).toISOString();
-            // console.log('tmp2String', tmp2String);
             duration = (new Date(parseInt(params.ExpressionAttributeValues[':rkey_begin']) - helper.TIMEZONE_OFFSET)).toISOString().slice(0, 10);
           }
 
@@ -160,8 +162,8 @@ const getMemberStats = async (playerList, monthList) => {
     keyList = keyList.concat(tmpList);
   });
 
-  let params = JSON.parse(`{"RequestItems": {"${helper.MEMBER_STATS_TABLE}":{"Keys": []}}}`);
-  params['RequestItems'][`${helper.MEMBER_STATS_TABLE}`]['Keys'] = keyList;
+  let params = JSON.parse(`{"RequestItems": {"${helper.TBL_MEMBER_STATS}":{"Keys": []}}}`);
+  params['RequestItems'][`${helper.TBL_MEMBER_STATS}`]['Keys'] = keyList;
 
 
   return await new Promise((resolve, reject) => {
@@ -171,7 +173,7 @@ const getMemberStats = async (playerList, monthList) => {
         reject(err);
       } else {
         // console.log(JSON.stringify(data));
-        resolve(data.Responses[`${helper.MEMBER_STATS_TABLE}`]);
+        resolve(data.Responses[`${helper.TBL_MEMBER_STATS}`]);
       }
     });
   });
@@ -190,8 +192,8 @@ const batchWriteMemberStats = async (memberHistorySummary) => {
     });
 
     if (itemList.length == 25 || index + 1 == memberHistorySummary.length) {
-      let params = JSON.parse(`{"RequestItems": {"${helper.MEMBER_STATS_TABLE}": []}}`);
-      params['RequestItems'][`${helper.MEMBER_STATS_TABLE}`] = Array.from(itemList);
+      let params = JSON.parse(`{"RequestItems": {"${helper.TBL_MEMBER_STATS}": []}}`);
+      params['RequestItems'][`${helper.TBL_MEMBER_STATS}`] = Array.from(itemList);
 
       paramsList.push(params);
       itemList = [];
